@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: company-policy-assistant
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=optional
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_API_KEY
+        sync: false
