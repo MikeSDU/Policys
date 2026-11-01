@@ -1,4 +1,5 @@
 import {performance} from 'node:perf_hooks';
+import {mergeGeminiResponse,thinkingOptions} from './gemini-response.mjs';
 
 const messages = {
   400:'Google afviste forespørgslen. Kontrollér API-nøgle og modelindstillinger.',
@@ -10,8 +11,8 @@ const messages = {
   503:'Google rapporterer, at tjenesten er utilgængelig.',
   504:'Google rapporterer, at forespørgslen overskred sin tidsgrænse.'
 };
-export async function diagnose({apiKey=process.env.GEMINI_API_KEY,model=process.env.GEMINI_MODEL||'gemini-3.8-flash',fetcher=fetch}={}) {
-  const report={version:'diagnostics-1',timestamp:new Date().toISOString(),model,steps:[]};
+export async function diagnose({apiKey=process.env.GEMINI_API_KEY,model=process.env.GEMINI_MODEL||'gemini-3.5-flash-lite',fetcher=fetch}={}) {
+  const report={version:'diagnostics-2-stream',timestamp:new Date().toISOString(),model,steps:[]};
   if(!apiKey) return {...report,ok:false,conclusion:'GEMINI_API_KEY mangler på serveren.'};
   if(apiKey!==apiKey.trim()) return {...report,ok:false,conclusion:'API-nøglen har mellemrum eller linjeskift i starten/slutningen. Ret værdien i Render Environment.'};
   const headers={'x-goog-api-key':apiKey,'content-type':'application/json'};
@@ -41,9 +42,10 @@ export async function diagnose({apiKey=process.env.GEMINI_API_KEY,model=process.
   report.configured_model_listed=eligible.some(m=>m.name===`models/${model}`);
   // Listing is not proof of generation quota. Test the configured model directly,
   // including aliases which need not appear in the returned list.
-  const generationConfig={maxOutputTokens:256,...(/^gemini-[34]/.test(model)?{thinkingConfig:{thinkingLevel:'low'}}:{})};
-  const answer=await request('2. Kort tekstkald uden politikdatabase',`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',body:JSON.stringify({contents:[{parts:[{text:'Reply with the single word OK.'}]}],generationConfig})},20000);
-  if(!answer)return {...report,ok:false,conclusion:'Forbindelsen til modellisten virker, men tekstkaldet fejler. Se HTTP-status eller timeout i trin 2.'};
+  const generationConfig={maxOutputTokens:256,...thinkingOptions(model)};
+  const payload=await request('2. Kort streaming-kald uden politikdatabase',`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent`,{method:'POST',body:JSON.stringify({contents:[{role:'user',parts:[{text:'Reply with the single word OK.'}]}],generationConfig})},20000);
+  if(!payload)return {...report,ok:false,conclusion:'Forbindelsen til modellisten virker, men tekstkaldet fejler. Se HTTP-status eller timeout i trin 2.'};
+  let answer;try{answer=mergeGeminiResponse(payload);}catch{return {...report,ok:false,conclusion:'Google returnerede en fejl inde i streaming-svaret.'};}
   const hasText=Boolean(answer.candidates?.some(c=>c.content?.parts?.some(p=>!p.thought && typeof p.text==='string' && p.text.trim())));
   const u=answer.usageMetadata;
   report.tokens=u?{input:u.promptTokenCount??null,output:u.candidatesTokenCount??null,total:u.totalTokenCount??null}:null;

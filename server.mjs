@@ -18,7 +18,11 @@ export const server = http.createServer(async (req,res) => {
       if (typeof input.question!=='string' || !input.question.trim() || input.question.length>600) return send(400,{error:'Enter a question of 1–600 characters.'});
       active++; try {return send(200,{question:input.question.trim(),results:await compare(input.question.trim()),timestamp:new Date().toISOString()});} finally {active--;}
     }
-    if(req.method==='GET' && files[path]) {const [name,type]=files[path];res.writeHead(200,{'Content-Type':type}); return res.end(await readFile(new URL(`./public/${name}`,import.meta.url)));}
+    if(req.method==='GET' && files[path]) {
+      const [name,type]=files[path];
+      const content=await readFile(new URL(path==='/diagnostics'?`./${name}`:`./public/${name}`,import.meta.url));
+      res.writeHead(200,{'Content-Type':type});return res.end(content);
+    }
     send(404,{error:'Not found.'});
   } catch {if(!res.headersSent) send(500,{error:'The request could not be completed.'});else res.end();}
 });
