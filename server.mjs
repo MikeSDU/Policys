@@ -1,14 +1,16 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {compare,policies} from './core.mjs';
+import {cachedDiagnosis} from './diagnostics.mjs';
 let active = 0;
-const files = {'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8']};
+const files = {'/':['index.html','text/html; charset=utf-8'],'/diagnostics':['diagnostics.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8']};
 export const server = http.createServer(async (req,res) => {
   const send = (status,data) => {res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
   try {
     const path = new URL(req.url,'http://localhost').pathname;
     if (req.method==='GET' && path==='/api/health') return send(200,{ok:true,policies:policies.length,gemini_configured:Boolean(process.env.GEMINI_API_KEY)});
     if (req.method==='GET' && path==='/api/policies') return send(200,policies);
+    if (req.method==='POST' && path==='/api/diagnostics') return send(200,await cachedDiagnosis());
     if (req.method==='POST' && path==='/api/compare') {
       if (active>=3) return send(429,{error:'The service is busy. Please try again shortly.'});
       let body=''; for await (const chunk of req) {body+=chunk; if (body.length>8192) return send(413,{error:'Request too large.'});}
